@@ -1,0 +1,41 @@
+name: Sync BitcoinVero Data
+
+on:
+  workflow_dispatch:
+  schedule:
+    - cron: '33 */6 * * *'
+
+permissions: {}
+
+concurrency:
+  group: bitcoinvero-data-mirror
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - name: Copy branches and tags
+        env:
+          MIRROR_TOKEN: ${{ secrets.MIRROR_TOKEN }}
+          GIT_TERMINAL_PROMPT: '0'
+        run: |
+          set -euo pipefail
+          test -n "$MIRROR_TOKEN"
+
+          git init --bare mirror.git
+          cd mirror.git
+
+          git fetch https://gitlab.com/bitcoinvero/bitcoinvero-data.git \
+            '+refs/heads/*:refs/heads/*' \
+            '+refs/tags/*:refs/tags/*'
+
+          auth="$(printf 'x-access-token:%s' "$MIRROR_TOKEN" | base64 -w 0)"
+          echo "::add-mask::$auth"
+
+          git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" \
+            push --atomic --prune \
+            https://github.com/kirillkiselev82/my-bitcoinvero-data.git \
+            '+refs/heads/*:refs/heads/*' \
+            '+refs/tags/*:refs/tags/*'
